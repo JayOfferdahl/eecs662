@@ -25,6 +25,10 @@ import ParserUtils
 --
 -- Source files for the Arithmetic Expressions Extended (AEE) language from PLIH
 --
+-- Edited by: Jay Offerdahl
+-- Date: Thu Feb 09 18:00:15 CDT 2016
+-- 
+-- Added multiply and division capabilties as well as a simple conditional check
 
 -- AST Definition
 
@@ -87,21 +91,21 @@ parseAEEFile = parseFile expr
 
 -- Evaluation Function
 
-eval :: AEE -> Maybe AEE
-eval (Num x) = Just (Num x)
-eval (Plus t1 t2) = let Just (Num v1) = (eval t1)
-                        Just (Num v2) = (eval t2)
-                    in Just (Num (v1+v2))
-eval (Minus t1 t2) = let Just (Num v1) = (eval t1)
-                         Just (Num v2) = (eval t2)
-                     in Just (Num (v1-v2))
-eval (Mult t1 t2) = let Just (Num v1) = (eval t1)
-                        Just (Num v2) = (eval t2)
-                    in Just (Num (v1*v2))
-eval (Div t1 t2) = let Just (Num v1) = (eval t1)
-                       Just (Num v2) = (eval t2)
-                   in Just (Num (div v1 v2))
-eval (If0 t1 t2 t3) = let Just (Num v1) = (eval t1)
+eval :: AEE -> AEE
+eval (Num x) = (Num x)
+eval (Plus t1 t2) = let (Num v1) = (eval t1)
+                        (Num v2) = (eval t2)
+                    in (Num (v1+v2))
+eval (Minus t1 t2) = let (Num v1) = (eval t1)
+                         (Num v2) = (eval t2)
+                     in (Num (v1-v2))
+eval (Mult t1 t2) = let (Num v1) = (eval t1)
+                        (Num v2) = (eval t2)
+                    in (Num (v1*v2))
+eval (Div t1 t2) = let (Num v1) = (eval t1)
+                       (Num v2) = (eval t2)
+                   in (Num (div v1 v2))
+eval (If0 t1 t2 t3) = let (Num v1) = (eval t1)
                       in if (v1 == 0) then (eval t2) else (eval t3)
 
 -- Interpreter = parse + eval
