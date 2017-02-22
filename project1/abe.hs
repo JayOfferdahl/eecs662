@@ -100,7 +100,7 @@ parseABEFile = parseFile expr
 
 eval :: ABE -> (Either String ABE)
 eval (Num x) = (Right (Num x))
-eval (Plus l r) = 
+eval (Plus l r) =
     case (eval l) of
         (Left e) -> (Left e)
         (Right (Num v1)) -> case (eval r) of
@@ -108,7 +108,7 @@ eval (Plus l r) =
                                 (Right (Num v2)) -> (Right (Num (v1 + v2)))
                                 (Right _) -> (Left "Error: Type error mismatch in Plus.")
         (Right _) -> (Left "Error: Type error mismatch in Plus.")
-eval (Minus l r) = 
+eval (Minus l r) =
     case (eval l) of
         (Left e) -> (Left e)
         (Right (Num v1)) -> case (eval r) of
@@ -226,12 +226,46 @@ interp statement =  let e = (parseABE statement) in
 
 
 -- Code optimizer which replaces a few cases of silly statements such as "x + 0" or if true...
+-- TODO --> optimize then go down the chain
 
 optimize :: ABE -> ABE
-optimize (Plus l r) = case (eval (IsZero r)) of
-                        (Right (Boolean True)) -> (l)
-                        (Right (Boolean False)) -> (Plus l r)
-optimize (If c t e) = case c of
-                        (Boolean True) -> (t)
-                        (Boolean False) -> (e)
-                        (_) -> (If c t e)
+optimize (Num x) = (Num x)
+optimize (Plus l r) = let l' = (optimize l)
+                          r' = (optimize r)
+                      in if l' == (Num 0)
+                         then r'
+                         else if r' == (Num 0)
+                              then l'
+                              else (Plus l' r')
+-- Do nothing if the left argument is 0 as subtraction still occurs (relative to right operand)
+optimize (Minus l r) = let l' = (optimize l)
+                           r' = (optimize r)
+                       in if r' == (Num 0)
+                          then l'
+                          else (Minus l' r')
+optimize (Mult l r) = let l' = (optimize l)
+                          r' = (optimize r)
+                      in if l' == (Num 0)
+                          then (Num 0)
+                          else if r' == (Num 0)
+                               then (Num 0)
+                               else (Mult l' r')
+optimize (Div l r) = if l == (Num 0)
+                     then (Num 0)
+                     else (Div (optimize l) (optimize r))
+optimize (Boolean x) = (Boolean x)
+-- Do I need this definition?
+optimize (IsZero x) = (IsZero (optimize x))
+optimize (And l r) = if (optimize r) == (Boolean False)
+                     then (Boolean False)
+                     else (if (optimize l) == (Boolean False)
+                           then (Boolean False)
+                           else (And (optimize l) (optimize r)))
+optimize (Leq l r) = (Leq (optimize l) (optimize r))
+optimize (If c t e) = let c' = (optimize c)
+                          t' = (optimize t)
+                          e' = (optimize e)
+                      in case c' of
+                            (Boolean True) -> t'
+                            (Boolean False) -> e'
+                            (_) -> (If c t' e')
