@@ -47,6 +47,21 @@ data ABE where
     deriving(Show, Eq)
 
 
+-- AST Pretty Printer
+
+pprint :: ABE -> String
+pprint (Num n) = show n
+pprint (Boolean b) = show b
+pprint (Plus n m) = "(" ++ pprint n ++ " + " ++ pprint m ++ ")"
+pprint (Minus n m) = "(" ++ pprint n ++ " - " ++ pprint m ++ ")"
+pprint (Mult n m) = "(" ++ pprint n ++ " * " ++ pprint m ++ ")"
+pprint (Div n m) = "(" ++ pprint n ++ " / " ++ pprint m ++ ")"
+pprint (And n m) = "(" ++ pprint n ++ " && " ++ pprint m ++ ")"
+pprint (Leq n m) = "(" ++ pprint n ++ " <= " ++ pprint m ++ ")"
+pprint (IsZero m) = "(isZero " ++ pprint m ++ ")"
+pprint (If c n m) = "(if " ++ pprint c ++ " then " ++ pprint n ++ " else " ++ pprint m ++ ")"
+
+
 -- Parser (requires Parsec/ParseUtils -- from parseUtils.hs)
 
 expr :: Parser ABE
@@ -174,46 +189,45 @@ typeof (Plus l r) = let l' = (typeof l)
                         r' = (typeof r)
                     in if l' == (Right TNum) && r' == (Right TNum)
                         then (Right TNum)
-                        else Left "Type error mismatch in Plus."
+                        else Left "Error: Type error mismatch in Plus."
 typeof (Minus l r) = let l' = (typeof l)
                          r' = (typeof r)
                     in if l' == (Right TNum) && r' == (Right TNum)
                         then (Right TNum)
-                        else Left "Type error mismatch in Minus."
+                        else Left "Error: Type error mismatch in Minus."
 typeof (Mult l r) = let l' = (typeof l)
                         r' = (typeof r)
                     in if l' == (Right TNum) && r' == (Right TNum)
                         then (Right TNum)
-                        else Left "Type error mismatch in Mult."
+                        else Left "Error: Type error mismatch in Mult."
 typeof (Div l r) =  let l' = (typeof l)
                         r' = (typeof r)
                     in if l' == (Right TNum) && r' == (Right TNum)
-                        then case (eval (IsZero r)) of
-                                (Left e) -> (Left e)
-                                (Right (Boolean True)) -> (Left "Constant 0 found in denominator.")
-                                (Right (Boolean False)) -> (Right TNum)
-                        else Left "Type error mismatch in Div."
+                        then case r of
+                                (Num 0) -> (Left "Error: Attempted division by zero.")
+                                otherwise -> (Right TNum)
+                        else Left "Error: Type error mismatch in Div."
 typeof (Boolean b) = (Right TBool)
 typeof (IsZero x) = let x' = (typeof x)
                     in if x' == (Right TNum)
                         then (Right TBool)
-                        else Left "Type error mismatch in IsZero."
+                        else Left "Error: Type error mismatch in IsZero."
 typeof (And l r) =  let l' = (typeof l)
                         r' = (typeof r)
                     in if l' == (Right TBool) && r' == (Right TBool)
                         then (Right TBool)
-                        else Left "Type error mismatch in And."
+                        else Left "Error: Type error mismatch in And."
 typeof (Leq l r) =  let l' = (typeof l)
                         r' = (typeof r)
                     in if l' == (Right TNum) && r' == (Right TNum)
                         then (Right TBool)
-                        else Left "Type error mismatch in Leq."
+                        else Left "Error: Type error mismatch in Leq."
 typeof (If c t e) = let c' = (typeof c)
                         t' = (typeof t)
                         e' = (typeof e)
                     in if c' == (Right TBool) && t' == e'
                         then t'
-                        else Left "Type error mismatch in If."
+                        else Left "Error: Type error mismatch in If."
 
 
 -- Interpreter
@@ -226,7 +240,6 @@ interp statement =  let e = (parseABE statement) in
 
 
 -- Code optimizer which replaces a few cases of silly statements such as "x + 0" or if true...
--- TODO --> optimize then go down the chain
 
 optimize :: ABE -> ABE
 optimize (Num x) = (Num x)
@@ -269,3 +282,98 @@ optimize (If c t e) = let c' = (optimize c)
                             (Boolean True) -> t'
                             (Boolean False) -> e'
                             (_) -> (If c t' e')
+
+
+-- Arbitrary AST Generator
+
+instance Arbitrary ABE where
+  arbitrary =
+    sized $ \n -> genABE (rem n 10)
+
+genNum =
+  do t <- choose (0,100)
+     return (Num t)
+
+genBool =
+  do t <- choose (True,False)
+     return (Boolean t)
+
+genPlus n =
+  do s <- genABE n
+     t <- genABE n
+     return (Plus s t)
+
+genMinus n =
+  do s <- genABE n
+     t <- genABE n
+     return (Minus s t)
+
+genMult n =
+  do s <- genABE n
+     t <- genABE n
+     return (Mult s t)
+
+genDiv n =
+  do s <- genABE n
+     t <- genABE n
+     return (Div s t)
+
+genAnd n =
+  do s <- genABE n
+     t <- genABE n
+     return (And s t)
+
+genLeq n =
+  do s <- genABE n
+     t <- genABE n
+     return (Leq s t)
+
+genIsZero n =
+  do s <- genABE n
+     return (IsZero s)
+
+genIf n =
+  do s <- genABE n
+     t <- genABE n
+     u <- genABE n
+     return (If s t u)
+
+genABE :: Int -> Gen ABE
+genABE 0 = 
+  do term <- oneof [genNum,genBool]
+     return term
+genABE n =
+  do term <- oneof [genNum,(genPlus (n-1))
+                   ,(genMinus (n-1))
+                   ,(genMult (n-1))
+                   ,(genDiv (n-1))
+                   ,(genAnd (n-1))
+                   ,(genLeq (n-1))
+                   ,(genIsZero (n-1))
+                   ,(genIf (n-1))]
+     return term
+
+-- QuickCheck 
+
+testTypeof :: Int -> IO ()
+testTypeof n = quickCheckWith stdArgs {maxSuccess=n}
+  (\t-> case typeof t of
+      (Right _) -> True
+      (Left _) -> True)
+
+testTypedEval :: Int -> IO ()
+testTypedEval n =
+  quickCheckWith stdArgs {maxSuccess=n}
+  (\t -> case typeof t of
+           (Right _) -> eval (parseABE (pprint t)) == (eval t)
+           (Left _) -> True)
+
+eqInterp :: Either String ABE -> Either String ABE -> Bool
+eqInterp s t =
+  case s of
+    (Right x) -> case t of
+                  (Right y) -> x == y
+                  (Left _) -> False
+    (Left x) -> case t of
+                   (Right y) -> False
+                   (Left _) -> True
