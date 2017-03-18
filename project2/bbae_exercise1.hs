@@ -195,7 +195,7 @@ eval env (Seq x y) =
          return y'
 eval env (Print x) =
   do x' <- (eval env x)
-     return x'
+     return (Num 0)
 
 -- subst for evals
 subst :: String -> BBAE -> BBAE -> BBAE
@@ -277,7 +277,7 @@ evals (Seq x y) =
          return y'
 evals (Print x) =
   do x' <- (evals x)
-     return x'
+     return (Num 0)
 
 interp = (eval []) . parseBBAE
 interps = evals . parseBBAE

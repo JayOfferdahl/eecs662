@@ -230,7 +230,7 @@ eval env (Seq x y) =
          return y'
 eval env (Print x) =
   do x' <- (eval env x)
-     return x'
+     return (Num 0)
 eval env (Cons f s) = 
   do x <- (eval env f)
      y <- (eval env s)
