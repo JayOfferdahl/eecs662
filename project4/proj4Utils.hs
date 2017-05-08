@@ -1,10 +1,17 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, FlexibleContexts #-}
 
 import Text.ParserCombinators.Parsec
 import Control.Monad
 import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec.Expr
 import qualified Text.ParserCombinators.Parsec.Token as Token
+
+--
+-- Project utilities for developing the FBAE interpreter.
+--
+-- Edited By: Jay Offerdahl
+-- Date: 08 May 2017
+--
 
 data TFBAE where
   TNum :: TFBAE
@@ -177,3 +184,132 @@ parseFile p file =
 
 parseFBAEFile = parseFile expr
 
+
+-- Exercise 1
+type EnvS = [(String, FBAEVal)]
+
+data FBAEVal where
+  NumV :: Int -> FBAEVal
+  BooleanV :: Bool -> FBAEVal
+  ClosureV :: String -> FBAE -> EnvS -> FBAEVal
+  deriving (Show,Eq)
+
+evalFBAE :: EnvS -> FBAE -> FBAEVal
+evalFBAE env (Num x) = (NumV x)
+evalFBAE env (Plus l r) = let (NumV l') = (evalFBAE env l)
+                              (NumV r') = (evalFBAE env r)
+                              in (NumV (l' + r'))
+evalFBAE env (Minus l r) = let (NumV l') = (evalFBAE env l)
+                               (NumV r') = (evalFBAE env r)
+                               in (NumV (l' - r'))
+evalFBAE env (Mult l r) = let (NumV l') = (evalFBAE env l)
+                              (NumV r') = (evalFBAE env r)
+                              in (NumV (l' * r'))
+evalFBAE env (Div l r) = let (NumV l') = (evalFBAE env l)
+                             (NumV r') = (evalFBAE env r)
+                             in case r' of 
+                                  0 -> error "Attempted division by 0."
+                                  _ -> (NumV (div l' r'))
+evalFBAE env (Bind i v b) = evalFBAE env (App (Lambda i TNum b) v)
+evalFBAE env (Lambda i t b) = (ClosureV i b env)
+evalFBAE env (App f a) =  let (ClosureV i b e) = (evalFBAE env f)
+                              a' = (evalFBAE env a)
+                              in evalFBAE ((i, a'):e) b
+evalFBAE env (Id id) = case (lookup id env) of
+                         Just x -> x
+                         Nothing -> error "Undefined id."
+evalFBAE env (Boolean i) = (BooleanV i)
+evalFBAE env (And l r) = let (BooleanV l') = (evalFBAE env l)
+                             (BooleanV r') = (evalFBAE env r)
+                             in (BooleanV (l' && r'))
+evalFBAE env (Or l r) = let (BooleanV l') = (evalFBAE env l)
+                            (BooleanV r') = (evalFBAE env r)
+                            in (BooleanV (l' || r'))
+evalFBAE env (Leq l r) = let (BooleanV l') = (evalFBAE env l)
+                             (BooleanV r') = (evalFBAE env r)
+                             in (BooleanV (l' <= r'))
+evalFBAE env (IsZero i) = let (NumV i') = (evalFBAE env i)
+                              in (BooleanV (i' == 0))
+evalFBAE env (If c t e) = let (BooleanV c') = (evalFBAE env c)
+                              in if c' then (evalFBAE env t) else (evalFBAE env e)
+evalFBAE env (Fix f) = let (ClosureV i b e) = (evalFBAE env f)
+                           in evalFBAE ((i, (evalFBAE e (Fix (Lambda i TNum b)))):e) b
+
+interp input = let parseString = (parseFBAE input)
+                   in (evalFBAE [] parseString)
+
+
+-- Exercise 3
+type Cont = [(String, TFBAE)]
+
+typeof :: Cont -> FBAE -> TFBAE
+typeof cont (Num x) = TNum
+typeof cont (Plus l r) = let l' = (typeof cont l)
+                             r' = (typeof cont r)
+                             in if l' == TNum && r' == TNum
+                                then TNum
+                                else error "Error: Type error mismatch in Plus."
+typeof cont (Minus l r) = let l' = (typeof cont l)
+                              r' = (typeof cont r)
+                              in if l' == TNum && r' == TNum
+                                 then TNum
+                                 else error "Error: Type error mismatch in Minus."
+typeof cont (Mult l r) = let l' = (typeof cont l)
+                             r' = (typeof cont r)
+                             in if l' == TNum && r' == TNum
+                                then TNum
+                                else error "Error: Type error mismatch in Mult."
+typeof cont (Div l r) = let l' = (typeof cont l)
+                            r' = (typeof cont r)
+                            in if l' == TNum && r' == TNum
+                               then TNum
+                               else error "Error: Type error mismatch in Div."
+typeof cont (Bind i v b) = let v' = (typeof cont v)
+                               in (typeof ((i,v'):cont) b)
+typeof cont (Lambda x d b) = let r = (typeof ((x,d):cont) b)
+                                 in d :->: r
+typeof cont (App x y) = let ty = (typeof cont y)
+                            in case (typeof cont x) of
+                                 txd :->: txr -> if txd == ty
+                                                 then txr
+                                                 else error "Error: Type error mismatch in App."
+                                 _ -> error "Error: App expects first argument to be a function (lambda)."
+typeof cont (Id id) = case (lookup id cont) of
+                        Just x -> x
+                        Nothing -> error "Error:Undefined id."
+typeof cont (Boolean b) = TBool
+typeof cont (And l r) = let l' = (typeof cont l)
+                            r' = (typeof cont r)
+                            in if l' == TBool && r' == TBool
+                               then TBool
+                               else error "Error: Type error mismatch in And."
+typeof cont (Or l r) = let l' = (typeof cont l)
+                           r' = (typeof cont r)
+                           in if l' == TBool && r' == TBool
+                              then TBool
+                              else error "Error: Type error mismatch in Or."
+typeof cont (Leq l r) = let l' = (typeof cont l)
+                            r' = (typeof cont r)
+                            in if l' == TNum && r' == TNum
+                               then TBool
+                               else error "Error: Type error mismatch in Leq."
+typeof cont (IsZero x) = let x' = (typeof cont x)
+                             in if x' == TNum
+                                then TBool
+                                else error "Error: Type error mismatch in IsZero."
+typeof cont (If c t e) = let c' = (typeof cont c)
+                             t' = (typeof cont t)
+                             e' = (typeof cont e)
+                             in if c' == TBool && t' == e'
+                                then t'
+                                else error "Error: Type error mismatch in If."
+typeof cont (Fix f) = case f of
+                        (Lambda i t b) -> case (typeof cont f) of
+                                            d :->: r -> (typeof ((i, d):cont) b)
+                        _ -> error "Error: Type error mismatch in Fix (no function given)."
+
+interpTyped input = let parseString = (parseFBAE input)
+                        in case typeof [] parseString of
+                             TNum -> evalFBAE [] parseString
+                             TBool -> evalFBAE [] parseString
+                             d :->: r -> evalFBAE [] parseString
